@@ -1,0 +1,39 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.artcraftmobile.bridge'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'io.github.jojo4626.atelierbridge'
+        minSdk 26
+        targetSdk 33
+        versionCode 100
+        versionName '1.0.0-rc.1'
+    }
+    signingConfigs {
+        releaseKey {
+            def path = System.getenv('ATELIERBRIDGE_KEYSTORE_FILE')
+            if (path) {
+                storeFile file(path)
+                storePassword System.getenv('ATELIERBRIDGE_STORE_PASSWORD')
+                keyAlias System.getenv('ATELIERBRIDGE_KEY_ALIAS')
+                keyPassword System.getenv('ATELIERBRIDGE_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (System.getenv('ATELIERBRIDGE_KEYSTORE_FILE')) {
+                signingConfig signingConfigs.releaseKey
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

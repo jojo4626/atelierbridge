@@ -1,0 +1,38 @@
+name: Tests Android
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Préparer Android
+        shell: bash
+        run: bash scripts/prepare-sdk.sh
+      - name: Tests statiques
+        run: |
+          python3 tests/verify_project.py
+          python3 tests/verify_public_release.py
+      - name: Tests Java et HTTP
+        run: |
+          bash tests/smoke_server.sh
+          bash tests/test_release_selector.sh
+          bash tests/test_file_export_policy.sh
+      - name: Tests WebView
+        run: |
+          node tests/test_photocraft_touch.cjs
+          node tests/test_photocraft_file_bridge.cjs
+          node tests/test_v06_export_hook.cjs
+      - name: Compiler
+        run: gradle --no-daemon --stacktrace assembleDebug
