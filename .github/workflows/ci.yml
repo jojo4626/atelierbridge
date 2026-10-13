@@ -24,6 +24,7 @@ jobs:
         run: |
           python3 tests/verify_project.py
           python3 tests/verify_public_release.py
+          python3 tests/verify_home.py
       - name: Tests Java et HTTP
         run: |
           bash tests/smoke_server.sh

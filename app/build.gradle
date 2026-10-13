@@ -10,8 +10,8 @@ android {
         applicationId 'io.github.jojo4626.atelierbridge'
         minSdk 26
         targetSdk 33
-        versionCode 100
-        versionName '1.0.0-rc.1'
+        versionCode 101
+        versionName '1.0.0-rc.2'
     }
     signingConfigs {
         releaseKey {

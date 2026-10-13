@@ -10,8 +10,8 @@ ci = (root / ".github/workflows/ci.yml").read_text()
 signing = (root / "scripts/setup-signing-termux.sh").read_text()
 
 assert "applicationId 'io.github.jojo4626.atelierbridge'" in app
-assert "versionName '1.0.0-rc.1'" in app
-assert "versionCode 100" in app
+assert "versionName '1.0.0-rc.2'" in app
+assert "versionCode 101" in app
 assert 'android:label="AtelierBridge"' in (root / "app/src/main/AndroidManifest.xml").read_text()
 assert "ATELIERBRIDGE_KEYSTORE_FILE" in app
 assert "github.ref == 'refs/heads/main'" in release

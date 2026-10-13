@@ -9,7 +9,7 @@ manifest = root/'app/src/main/AndroidManifest.xml'
 ET.parse(manifest)
 ET.parse(root/'app/src/main/res/xml/network_security_config.xml')
 ET.parse(root/'app/src/main/res/drawable/ic_launcher.xml')
-assert 'versionCode 100' in (root/'app/build.gradle').read_text()
+assert 'versionCode 101' in (root/'app/build.gradle').read_text()
 assets = root/'app/src/main/assets/test-wasm-local.zip'
 example = root/'examples/test-wasm-local.zip'
 assert assets.read_bytes() == example.read_bytes(), 'diagnostic asset and downloadable test differ'

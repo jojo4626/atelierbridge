@@ -7,6 +7,12 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.res.ColorStateList;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -59,7 +65,14 @@ public final class MainActivity extends Activity {
     private boolean photoTouchMenuEnabled = true;
     private final AtomicBoolean updateCheckActive = new AtomicBoolean(false);
     private static final String UPDATE_PREFS = "module_update_checks";
-    private static final int BG = 0xff10131b;
+    private static final int BG = 0xff0d111b;
+    private static final int SURFACE = 0xff171f2e;
+    private static final int PANEL = 0xff202b3b;
+    private static final int OUTLINE = 0xff334255;
+    private static final int MINT = 0xff88e5ca;
+    private int currentSection = 0;
+    private String catalogCategory = "Tous";
+    private String catalogQuery = "";
     private static final int CARD = 0xff1c2330;
     private static final int WHITE = 0xfff0f4fa;
     private static final int SOFT = 0xffa8b5c8;
@@ -149,7 +162,7 @@ public final class MainActivity extends Activity {
 
     private void showAbout() {
         new AlertDialog.Builder(this)
-            .setTitle("AtelierBridge · 1.0 RC1")
+            .setTitle("AtelierBridge · 1.0 RC2")
             .setMessage("Lanceur indépendant, sans affiliation avec l’équipe ArtCraft. "
                 + "Les modules téléchargés appartiennent à leurs auteurs respectifs. "
                 + "Les documents restent sur l’appareil ou dans le dossier choisi. "
@@ -160,6 +173,111 @@ public final class MainActivity extends Activity {
             .setNeutralButton("GitHub", (dialog, which) ->
                 openExternal("https://github.com/jojo4626/atelierbridge"))
             .show();
+    }
+
+    private GradientDrawable shape(int color, int radius, int border) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radius));
+        if (border != 0) drawable.setStroke(dp(1), border);
+        return drawable;
+    }
+
+    private GradientDrawable heroBackground() {
+        GradientDrawable drawable = new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[] {0xff264e73, 0xff233952, 0xff172638});
+        drawable.setCornerRadius(dp(22));
+        drawable.setStroke(dp(1), 0xff3b6081);
+        return drawable;
+    }
+
+    private TextView label(String value, int size, int color, boolean bold) {
+        TextView view = text(value, size, color);
+        if (bold) view.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        return view;
+    }
+
+    private TextView action(String title, boolean primary, Runnable click) {
+        TextView view = label(title, 13, primary ? BG : WHITE, true);
+        view.setGravity(Gravity.CENTER);
+        view.setMinHeight(dp(46));
+        view.setPadding(dp(12), dp(10), dp(12), dp(10));
+        view.setBackground(shape(primary ? ACCENT : PANEL, 12, primary ? 0 : OUTLINE));
+        view.setOnClickListener(v -> click.run());
+        view.setClickable(true);
+        view.setFocusable(true);
+        return view;
+    }
+
+    private LinearLayout panel(int color, int radius, int border) {
+        LinearLayout view = vertical();
+        view.setPadding(dp(16), dp(16), dp(16), dp(16));
+        view.setBackground(shape(color, radius, border));
+        return view;
+    }
+
+    private LinearLayout horizontal() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.HORIZONTAL);
+        l.setGravity(Gravity.CENTER_VERTICAL);
+        return l;
+    }
+
+    private int installedCount() {
+        int count = 0;
+        for (String[] app : APPS) if (installed(app[1])) count++;
+        return count;
+    }
+
+    private String resumeSlug() {
+        String last = getSharedPreferences("atelierbridge_home", MODE_PRIVATE)
+            .getString("last_opened", "");
+        if (last != null && installed(last)) return last;
+        if (installed("photocraft")) return "photocraft";
+        if (installed("vectorcraft")) return "vectorcraft";
+        for (String[] app : APPS) if (installed(app[1])) return app[1];
+        return null;
+    }
+
+    private String displayName(String slug) {
+        for (String[] app : APPS) if (app[1].equals(slug)) return app[0];
+        return slug;
+    }
+
+    private String category(String slug) {
+        switch (slug) {
+            case "photocraft": case "lightcraft": return "Image";
+            case "vectorcraft": case "cadcraft": case "designcraft": case "figcraft": return "Dessin";
+            case "filmcraft": case "effectcraft": case "soundcraft": return "Média";
+            case "pdfcraft": case "wordcraft": case "deckcraft": case "gridcraft": return "Documents";
+            default: return "Autres";
+        }
+    }
+
+    private int appColor(String slug) {
+        switch (slug) {
+            case "photocraft": return 0xff8ab9ff;
+            case "vectorcraft": return 0xff87e2c4;
+            case "filmcraft": return 0xffd6adfa;
+            case "lightcraft": return 0xffffcb87;
+            default: return 0xffafc1dc;
+        }
+    }
+
+    private LinearLayout sectionHeader(String title, String detail, Runnable click) {
+        LinearLayout row = horizontal();
+        LinearLayout names = vertical();
+        names.addView(label(title, 20, WHITE, true));
+        names.addView(label(detail, 12, SOFT, false));
+        row.addView(names, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        if (click != null) {
+            TextView link = label("Voir tout  ›", 13, ACCENT, true);
+            link.setPadding(dp(12), dp(12), 0, dp(12));
+            link.setOnClickListener(v -> click.run());
+            row.addView(link);
+        }
+        return row;
     }
 
     private void showHome() {
@@ -173,96 +291,326 @@ public final class MainActivity extends Activity {
             browser.destroy();
             browser = null;
         }
+        showSection(0);
+    }
+
+    private void showSection(int section) {
+        currentSection = section;
+        LinearLayout screen = vertical();
+        screen.setBackgroundColor(BG);
+        LinearLayout header = horizontal();
+        header.setPadding(dp(20), dp(13), dp(20), dp(12));
+        header.setBackgroundColor(BG);
+        TextView icon = label("A", 26, BG, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(MINT, 12, 0));
+        header.addView(icon, new LinearLayout.LayoutParams(dp(45), dp(45)));
+        LinearLayout brand = vertical();
+        brand.setPadding(dp(12), 0, 0, 0);
+        brand.addView(label("AtelierBridge", 20, WHITE, true));
+        brand.addView(label("Ton studio créatif", 12, SOFT, false));
+        header.addView(brand, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView version = label("1.0 RC2", 11, MINT, true);
+        version.setPadding(dp(11), dp(8), dp(11), dp(8));
+        version.setBackground(shape(0xff1b383d, 20, 0xff2f615e));
+        version.setOnClickListener(v -> showAbout());
+        header.addView(version);
+        screen.addView(header);
+
+        View separator = new View(this);
+        separator.setBackgroundColor(OUTLINE);
+        screen.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(BG);
+        scroll.setClipToPadding(false);
         main = vertical();
-        main.setPadding(dp(18), dp(25), dp(18), dp(20));
+        main.setPadding(dp(20), dp(18), dp(20), dp(24));
         scroll.addView(main);
-        setContentView(scroll);
+        screen.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        if (section == 0) renderDashboard();
+        else if (section == 1) renderCatalog();
+        else if (section == 2) renderFiles();
+        else renderSettings();
+        screen.addView(bottomNavigation());
+        setContentView(screen);
+    }
 
-        TextView kicker = text("ÉDITION INDÉPENDANTE • 1.0 RC1", 11, ACCENT);
-        kicker.setLetterSpacing(.15f);
-        main.addView(kicker, margins(8));
-        TextView heading = text("AtelierBridge", 29, WHITE);
-        heading.setTypeface(null, 1);
-        main.addView(heading, margins(4));
-        main.addView(text("Installe les ateliers de ton choix en un clic, ouvre les fichiers depuis Android et enregistre les exports directement sur ta tablette.", 14, SOFT), margins(14));
-        TextView note = text("Téléchargement Internet nécessaire à l'installation uniquement ; les modules déjà installés fonctionnent en local. Disponibilité et compatibilité Android selon chaque éditeur.", 12, SOFT);
-        note.setPadding(dp(13), dp(12), dp(13), dp(12));
-        note.setBackgroundColor(CARD);
-        main.addView(note, margins(22));
-
-        Button about = button("À propos, confidentialité et licences", 0xff34475e, this::showAbout);
-        about.setMinHeight(dp(48));
-        main.addView(about, margins(10));
-
-        Button diagnosis = button("Tester ma tablette (WASM / WebGL)", ACCENT, this::runDiagnostics);
-        diagnosis.setMinHeight(dp(50));
-        main.addView(diagnosis, margins(8));
-
-        Button multiInstall = button("Choisir plusieurs ateliers à installer", 0xff34475e, this::chooseModules);
-        multiInstall.setMinHeight(dp(48));
-        main.addView(multiInstall, margins(8));
-
-        Button recents = button("Mes exports récents", 0xff34475e, this::showRecentExports);
-        recents.setMinHeight(dp(48));
-        main.addView(recents, margins(8));
-        Button updates = button("Rechercher les mises à jour", 0xff34475e, () -> checkUpdates(true));
-        updates.setMinHeight(dp(48));
-        main.addView(updates, margins(18));
-
-        final int columns = getResources().getConfiguration().smallestScreenWidthDp >= 600 ? 2 : 1;
-        LinearLayout gridRow = null;
-        for (int i = 0; i < APPS.length; i++) {
-            String[] app = APPS[i];
-            if (i % columns == 0) {
-                gridRow = new LinearLayout(this);
-                gridRow.setOrientation(LinearLayout.HORIZONTAL);
-                main.addView(gridRow, margins(6));
-            }
-            String name = app[0], slug = app[1], purpose = app[2];
-            boolean ready = installed(slug);
-            LinearLayout card = vertical();
-            card.setPadding(dp(14), dp(14), dp(14), dp(11));
-            card.setBackgroundColor(CARD);
-            String installedVersion = readInstalledVersion(slug);
-            TextView title = text(name + (ready ? "  •  Installé" + (installedVersion.isEmpty() ? "" : " (" + installedVersion + ")") : "  •  À installer"), 19, WHITE);
-            title.setTypeface(null, 1);
-            card.addView(title, margins(4));
-            card.addView(text(purpose, 13, SOFT), margins(9));
-
-            LinearLayout actions = new LinearLayout(this);
-            actions.setOrientation(LinearLayout.HORIZONTAL);
-            Button open = button("Ouvrir", ACCENT, () -> openApp(slug));
-            open.setEnabled(ready);
-            actions.addView(open, new LinearLayout.LayoutParams(0, dp(45), 1));
-            Button installer = button(ready ? "Mettre à jour" : "Installer ↓", 0xff34475e,
-                () -> installSelected(new String[] {slug}));
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(45), 1);
-            p.leftMargin = dp(7);
-            actions.addView(installer, p);
-            card.addView(actions, margins(4));
-            LinearLayout otherActions = new LinearLayout(this);
-            otherActions.setOrientation(LinearLayout.HORIZONTAL);
-            Button importZip = button("Importer ZIP", 0xff253242, () -> importZip(slug));
-            otherActions.addView(importZip, new LinearLayout.LayoutParams(0, dp(42), 1));
-            Button releases = button("Site officiel ↗", 0xff253242,
-                () -> openExternal("https://github.com/storytold/" + slug + "/releases/latest"));
-            LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, dp(42), 1);
-            p2.leftMargin = dp(7);
-            otherActions.addView(releases, p2);
-            card.addView(otherActions, margins(0));
-            LinearLayout.LayoutParams cardParams = columns == 1
-                ? new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                : new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-            cardParams.rightMargin = dp(columns == 1 ? 0 : 8);
-            cardParams.bottomMargin = dp(8);
-            gridRow.addView(card, cardParams);
+    private View bottomNavigation() {
+        LinearLayout bar = horizontal();
+        bar.setPadding(dp(10), dp(7), dp(10), dp(8));
+        bar.setBackgroundColor(SURFACE);
+        String[] names = {"Accueil", "Catalogue", "Fichiers", "Réglages"};
+        String[] symbols = {"⌂", "▦", "▤", "⚙"};
+        for (int i = 0; i < names.length; i++) {
+            final int target = i;
+            LinearLayout item = vertical();
+            item.setGravity(Gravity.CENTER);
+            item.setPadding(0, dp(4), 0, dp(4));
+            if (currentSection == i) item.setBackground(shape(PANEL, 14, OUTLINE));
+            TextView sym = label(symbols[i], 22, currentSection == i ? ACCENT : SOFT, true);
+            sym.setGravity(Gravity.CENTER);
+            item.addView(sym);
+            TextView caption = label(names[i], 10, currentSection == i ? ACCENT : SOFT, currentSection == i);
+            caption.setGravity(Gravity.CENTER);
+            item.addView(caption);
+            item.setContentDescription("Ouvrir " + names[i]);
+            item.setOnClickListener(v -> { if (currentSection != target) showSection(target); });
+            bar.addView(item, new LinearLayout.LayoutParams(0, dp(59), 1));
         }
-        TextView footer = text("Catalogue indépendant non officiel. ZIP Web uniquement, récupérés depuis GitHub / storytold. L'installation est locale ; certains modules peuvent ne pas être proposés ou compatibles.", 12, SOFT);
-        footer.setPadding(0, dp(8), 0, dp(15));
-        main.addView(footer);
+        return bar;
+    }
+
+    private void renderDashboard() {
+        String resume = resumeSlug();
+        LinearLayout hero = panel(0xff223e5b, 22, 0);
+        hero.setBackground(heroBackground());
+        TextView eyebrow = label("TON ESPACE CRÉATIF  ✦", 11, MINT, true);
+        eyebrow.setLetterSpacing(.12f);
+        hero.addView(eyebrow, margins(12));
+        hero.addView(label("Imagine. Crée.\nExprime-toi.", 29, WHITE, true), margins(12));
+        hero.addView(label("Tes outils de création réunis au même endroit, directement sur ta tablette.", 14, 0xffd0e2f1, false), margins(18));
+        LinearLayout ctas = horizontal();
+        ctas.addView(action(resume == null ? "Explorer les ateliers  →" : "Reprendre " + displayName(resume) + "  →",
+            true, () -> { if (resume == null) showSection(1); else openApp(resume); }),
+            new LinearLayout.LayoutParams(0, dp(49), 1));
+        TextView browse = action("Catalogue", false, () -> showSection(1));
+        LinearLayout.LayoutParams secondary = new LinearLayout.LayoutParams(0, dp(49), .55f);
+        secondary.leftMargin = dp(9);
+        ctas.addView(browse, secondary);
+        hero.addView(ctas);
+        main.addView(hero, margins(16));
+
+        LinearLayout metrics = horizontal();
+        addMetric(metrics, String.valueOf(installedCount()), "Installés");
+        addMetric(metrics, String.valueOf(APPS.length), "Ateliers");
+        addMetric(metrics, String.valueOf(RecentExports.list(this).size()), "Exports");
+        main.addView(metrics, margins(26));
+
+        main.addView(sectionHeader("Mes ateliers", "Prêts à créer, même hors connexion", () -> showSection(1)), margins(14));
+        ArrayList<String[]> mine = new ArrayList<>();
+        for (String[] app : APPS) if (installed(app[1])) mine.add(app);
+        if (mine.isEmpty()) {
+            LinearLayout empty = panel(SURFACE, 16, OUTLINE);
+            empty.addView(label("Ton studio attend ses premiers outils", 16, WHITE, true), margins(6));
+            empty.addView(label("Choisis PhotoCraft, VectorCraft ou un autre atelier dans le catalogue.", 13, SOFT, false), margins(12));
+            empty.addView(action("Découvrir le catalogue", true, () -> showSection(1)));
+            main.addView(empty, margins(24));
+        } else {
+            renderCards(main, mine, false);
+        }
+
+        main.addView(sectionHeader("À découvrir", "Installe uniquement les outils dont tu as besoin", () -> showSection(1)), margins(14));
+        ArrayList<String[]> suggestions = new ArrayList<>();
+        for (String[] app : APPS) if (!installed(app[1]) && suggestions.size() < 2) suggestions.add(app);
+        if (!suggestions.isEmpty()) renderCards(main, suggestions, true);
+        else main.addView(label("Tous les ateliers du catalogue sont installés.", 13, SOFT, false), margins(20));
+
+        LinearLayout tip = panel(SURFACE, 16, OUTLINE);
+        tip.addView(label("✦  Crée aussi hors connexion", 15, MINT, true), margins(6));
+        tip.addView(label("Les ateliers installés restent sur ton appareil. Internet est uniquement nécessaire pour leur téléchargement et leurs mises à jour.", 12, SOFT, false));
+        main.addView(tip);
+    }
+
+    private void addMetric(LinearLayout row, String amount, String detail) {
+        LinearLayout cell = panel(SURFACE, 14, OUTLINE);
+        cell.setPadding(dp(9), dp(12), dp(9), dp(12));
+        TextView count = label(amount, 23, WHITE, true);
+        count.setGravity(Gravity.CENTER);
+        cell.addView(count);
+        TextView name = label(detail, 11, SOFT, false);
+        name.setGravity(Gravity.CENTER);
+        cell.addView(name);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(79), 1);
+        p.rightMargin = dp(7);
+        row.addView(cell, p);
+    }
+
+    private void renderCards(LinearLayout parent, List<String[]> apps, boolean compact) {
+        int columns = getResources().getConfiguration().smallestScreenWidthDp >= 600 ? 2 : 1;
+        LinearLayout row = null;
+        for (int i = 0; i < apps.size(); i++) {
+            if (i % columns == 0) {
+                row = horizontal();
+                row.setGravity(Gravity.TOP);
+                parent.addView(row, margins(10));
+            }
+            LinearLayout card = moduleCard(apps.get(i), compact);
+            LinearLayout.LayoutParams p = columns == 1
+                ? new LinearLayout.LayoutParams(-1, -2)
+                : new LinearLayout.LayoutParams(0, -2, 1);
+            if (columns == 2 && i % 2 == 0) p.rightMargin = dp(10);
+            row.addView(card, p);
+            if (columns == 2 && i == apps.size() - 1 && i % 2 == 0) {
+                row.addView(new View(this), new LinearLayout.LayoutParams(0, dp(1), 1));
+            }
+        }
+    }
+
+    private LinearLayout moduleCard(String[] app, boolean compact) {
+        String name = app[0], slug = app[1];
+        boolean ready = installed(slug);
+        LinearLayout card = panel(SURFACE, 17, OUTLINE);
+        card.setPadding(dp(14), dp(14), dp(14), dp(14));
+        LinearLayout headline = horizontal();
+        TextView icon = label(name.substring(0, 1), 24, BG, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(appColor(slug), 13, 0));
+        headline.addView(icon, new LinearLayout.LayoutParams(dp(47), dp(47)));
+        LinearLayout labels = vertical();
+        labels.setPadding(dp(12), 0, 0, 0);
+        labels.addView(label(name, 17, WHITE, true), margins(3));
+        labels.addView(label(category(slug) + (ready ? "  ·  Installé" : "  ·  À installer"), 11,
+            ready ? MINT : SOFT, false));
+        headline.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+        card.addView(headline, margins(12));
+        card.addView(label(app[2], 12, SOFT, false), margins(14));
+        if (ready) {
+            card.addView(action("Ouvrir l'atelier  →", true, () -> openApp(slug)), margins(8));
+            if (!compact) card.addView(action("Mettre à jour", false, () -> installSelected(new String[]{slug})));
+        } else {
+            card.addView(action("Installer  ↓", true, () -> installSelected(new String[]{slug})), margins(8));
+            if (!compact) card.addView(action("Importer un ZIP", false, () -> importZip(slug)));
+        }
+        return card;
+    }
+
+    private void renderCatalog() {
+        main.addView(label("Catalogue", 28, WHITE, true), margins(5));
+        main.addView(label("Les ateliers de création à installer selon tes envies.", 13, SOFT, false), margins(18));
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setTextColor(WHITE);
+        search.setHintTextColor(SOFT);
+        search.setTextSize(15);
+        search.setHint("⌕  Rechercher un atelier");
+        search.setPadding(dp(16), dp(12), dp(16), dp(12));
+        search.setBackground(shape(SURFACE, 14, OUTLINE));
+        search.setText(catalogQuery);
+        main.addView(search, margins(14));
+        HorizontalScrollView categories = new HorizontalScrollView(this);
+        categories.setHorizontalScrollBarEnabled(false);
+        LinearLayout chips = horizontal();
+        String[] options = {"Tous", "Image", "Dessin", "Média", "Documents"};
+        for (String option : options) {
+            final String target = option;
+            boolean selected = catalogCategory.equals(option);
+            TextView chip = label(option, 13, selected ? BG : SOFT, selected);
+            chip.setGravity(Gravity.CENTER);
+            chip.setPadding(dp(17), dp(10), dp(17), dp(10));
+            chip.setBackground(shape(selected ? MINT : SURFACE, 24, selected ? 0 : OUTLINE));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(41));
+            params.rightMargin = dp(8);
+            chips.addView(chip, params);
+            chip.setOnClickListener(v -> { catalogCategory = target; showSection(1); });
+        }
+        categories.addView(chips);
+        main.addView(categories, margins(18));
+        main.addView(sectionHeader("Tous les ateliers", "Installation et mises à jour en un clic", null), margins(12));
+        LinearLayout results = vertical();
+        main.addView(results, margins(16));
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                catalogQuery = s.toString();
+                populateCatalog(results);
+            }
+            @Override public void afterTextChanged(Editable e) { }
+        });
+        populateCatalog(results);
+        main.addView(action("Installer plusieurs ateliers", false, this::chooseModules), margins(12));
+        main.addView(label("Les modules sont fournis par leurs auteurs. Certaines versions Web peuvent ne pas être disponibles ou fonctionner sur Android.", 12, SOFT, false));
+    }
+
+    private void populateCatalog(LinearLayout container) {
+        container.removeAllViews();
+        ArrayList<String[]> matches = new ArrayList<>();
+        String query = catalogQuery.trim().toLowerCase(java.util.Locale.ROOT);
+        for (String[] app : APPS) {
+            if (!catalogCategory.equals("Tous") && !category(app[1]).equals(catalogCategory)) continue;
+            if (!query.isEmpty() && !(app[0] + " " + app[2] + " " + category(app[1]))
+                .toLowerCase(java.util.Locale.ROOT).contains(query)) continue;
+            matches.add(app);
+        }
+        if (matches.isEmpty()) {
+            LinearLayout empty = panel(SURFACE, 16, OUTLINE);
+            empty.addView(label("Aucun atelier trouvé", 16, WHITE, true), margins(5));
+            empty.addView(label("Essaie un autre nom ou sélectionne la catégorie Tous.", 13, SOFT, false));
+            container.addView(empty);
+        } else renderCards(container, matches, false);
+    }
+
+    private void renderFiles() {
+        main.addView(label("Mes fichiers", 28, WHITE, true), margins(6));
+        main.addView(label("Retrouve les créations enregistrées depuis tes ateliers.", 13, SOFT, false), margins(20));
+        List<RecentExports.Entry> recent = RecentExports.list(this);
+        main.addView(sectionHeader("Exports récents", recent.size() + " fichier(s) enregistré(s)",
+            recent.isEmpty() ? null : this::showRecentExports), margins(15));
+        if (recent.isEmpty()) {
+            LinearLayout empty = panel(SURFACE, 18, OUTLINE);
+            TextView emoji = label("▤", 35, ACCENT, false);
+            emoji.setGravity(Gravity.CENTER);
+            empty.addView(emoji, margins(10));
+            TextView title = label("Tes créations apparaîtront ici", 18, WHITE, true);
+            title.setGravity(Gravity.CENTER);
+            empty.addView(title, margins(8));
+            TextView detail = label("Ouvre un atelier et exporte un PNG, une image ou un SVG vers un dossier Android.", 13, SOFT, false);
+            detail.setGravity(Gravity.CENTER);
+            empty.addView(detail, margins(18));
+            empty.addView(action("Ouvrir un atelier", true, () -> showSection(0)));
+            main.addView(empty);
+        } else {
+            for (int i = 0; i < recent.size() && i < 12; i++) {
+                RecentExports.Entry e = recent.get(i);
+                LinearLayout card = panel(SURFACE, 14, OUTLINE);
+                card.setPadding(dp(14), dp(12), dp(14), dp(12));
+                LinearLayout line = horizontal();
+                TextView fileIcon = label("▤", 25, ACCENT, true);
+                line.addView(fileIcon, new LinearLayout.LayoutParams(dp(37), -2));
+                LinearLayout info = vertical();
+                info.addView(label(e.name, 15, WHITE, true), margins(4));
+                info.addView(label(e.appName + "  ·  " +
+                    android.text.format.DateFormat.format("dd/MM/yyyy", e.timestamp), 12, SOFT, false));
+                line.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+                line.addView(label("›", 25, ACCENT, false));
+                card.addView(line);
+                card.setOnClickListener(v -> openRecentExport(e));
+                main.addView(card, margins(9));
+            }
+            main.addView(action("Gérer l'historique", false, this::showRecentExports));
+        }
+    }
+
+    private void renderSettings() {
+        main.addView(label("Réglages", 28, WHITE, true), margins(6));
+        main.addView(label("Personnalise et entretient ton studio.", 13, SOFT, false), margins(20));
+        main.addView(sectionHeader("Ateliers", "Installation et compatibilité", null), margins(12));
+        settingsRow("↻", "Rechercher les mises à jour", "Vérifier les versions de tes modules installés", () -> checkUpdates(true));
+        settingsRow("▦", "Installer plusieurs ateliers", "Télécharger plusieurs éditeurs en une fois", this::chooseModules);
+        settingsRow("◇", "Tester ma tablette", "WebAssembly, WebGL2 et fonctions de fichier", this::runDiagnostics);
+        main.addView(sectionHeader("À propos", "Informations et transparence", null), margins(12));
+        settingsRow("ⓘ", "Confidentialité et licences", "Origine des modules et fonctionnement hors ligne", this::showAbout);
+        settingsRow("↗", "Code source sur GitHub", "Consulter le projet AtelierBridge", () -> openExternal("https://github.com/jojo4626/atelierbridge"));
+        TextView footer = label("AtelierBridge 1.0.0-rc.2  ·  Édition indépendante", 12, SOFT, false);
+        footer.setGravity(Gravity.CENTER);
+        main.addView(footer, margins(8));
+    }
+
+    private void settingsRow(String symbol, String title, String subtitle, Runnable click) {
+        LinearLayout line = horizontal();
+        line.setPadding(dp(16), dp(16), dp(16), dp(16));
+        line.setBackground(shape(SURFACE, 14, OUTLINE));
+        TextView mark = label(symbol, 23, MINT, true);
+        mark.setGravity(Gravity.CENTER);
+        line.addView(mark, new LinearLayout.LayoutParams(dp(35), -2));
+        LinearLayout desc = vertical();
+        desc.setPadding(dp(11), 0, 0, 0);
+        desc.addView(label(title, 15, WHITE, true), margins(4));
+        desc.addView(label(subtitle, 12, SOFT, false));
+        line.addView(desc, new LinearLayout.LayoutParams(0, -2, 1));
+        line.addView(label("›", 24, ACCENT, false));
+        line.setOnClickListener(v -> click.run());
+        main.addView(line, margins(10));
     }
 
     private String readInstalledVersion(String slug) {
@@ -707,6 +1055,10 @@ public final class MainActivity extends Activity {
             return;
         }
         note("Ouverture : " + slug);
+        if (!"testcraft".equals(slug)) {
+            getSharedPreferences("atelierbridge_home", MODE_PRIVATE)
+                .edit().putString("last_opened", slug).apply();
+        }
         String localUrl = "http://127.0.0.1:" + server.getPort() + "/";
         LinearLayout wrapper = vertical();
         wrapper.setBackgroundColor(BG);
@@ -886,6 +1238,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (browser != null) showHome();
+        else if (currentSection != 0) showSection(0);
         else super.onBackPressed();
     }
     @Override protected void onDestroy() {

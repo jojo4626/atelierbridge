@@ -50,6 +50,7 @@ jobs:
         run: |
           python3 tests/verify_project.py
           python3 tests/verify_public_release.py
+          python3 tests/verify_home.py
           bash tests/smoke_server.sh
           bash tests/test_release_selector.sh
           bash tests/test_file_export_policy.sh
