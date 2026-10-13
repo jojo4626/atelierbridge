@@ -2,9 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+def playStore = (project.findProperty('playStore') ?: 'false').toString().toBoolean()
+
 android {
     namespace 'com.artcraftmobile.bridge'
-    compileSdk 35
+    compileSdk playStore ? 36 : 35
 
     defaultConfig {
         applicationId 'io.github.jojo4626.atelierbridge'
@@ -12,6 +14,12 @@ android {
         targetSdk 33
         versionCode 101
         versionName '1.0.0-rc.2'
+        if (playStore) {
+            applicationId 'io.github.jojo4626.atelierbridge.play'
+            targetSdk 36
+            versionCode 201
+            versionName '1.0.0-play.1'
+        }
     }
     signingConfigs {
         releaseKey {

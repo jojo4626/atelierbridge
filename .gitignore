@@ -17,3 +17,6 @@ local.properties
 **/keystore.properties
 *.b64
 signing/
+
+# Bundles tiers réservés au build Google Play
+app/src/main/assets/play/*.zip

@@ -96,6 +96,48 @@ public final class MainActivity extends Activity {
         {"GridCraft", "gridcraft", "Tableurs"},
     };
 
+    private static final String[][] PLAY_APPS = new String[][] {
+        {"PhotoCraft", "photocraft", "Retouche photo et calques"},
+        {"VectorCraft", "vectorcraft", "Vecteurs, SVG et laser"}
+    };
+
+    private boolean isPlayEdition() {
+        return getPackageName().endsWith(".play");
+    }
+
+    private String[][] availableApps() {
+        return isPlayEdition() ? PLAY_APPS : APPS;
+    }
+
+    private void prepareBundledModules() {
+        background.execute(() -> {
+            String failure = null;
+            for (String[] module : PLAY_APPS) {
+                String slug = module[1];
+                String packagedVersion = slug.equals("photocraft") ? "v0.8.2" : "v0.10.0";
+                if (installed(slug) && packagedVersion.equals(readInstalledVersion(slug))) continue;
+                try (InputStream source = getAssets().open("play/" + slug + ".zip")) {
+                    installZip(source, slug);
+                    try (FileOutputStream saved = new FileOutputStream(new File(bundle(slug), "release.txt"))) {
+                        saved.write(packagedVersion.getBytes(StandardCharsets.UTF_8));
+                    }
+                } catch (Exception error) {
+                    failure = slug + " : " + error.getMessage();
+                    break;
+                }
+            }
+            String message = failure;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                showHome();
+                if (message != null) new AlertDialog.Builder(this)
+                    .setTitle("Préparation des ateliers")
+                    .setMessage("Impossible de préparer les éditeurs intégrés : " + message)
+                    .setPositiveButton("OK", null).show();
+            });
+        });
+    }
+
     private final ExecutorService background = Executors.newSingleThreadExecutor();
     private LocalHttpServer server;
     private LinearLayout main;
@@ -124,7 +166,8 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         showHome();
-        checkUpdates(false);
+        if (isPlayEdition()) prepareBundledModules();
+        else checkUpdates(false);
     }
 
     private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density + .5f); }
@@ -162,17 +205,39 @@ public final class MainActivity extends Activity {
 
     private void showAbout() {
         new AlertDialog.Builder(this)
-            .setTitle("AtelierBridge · 1.0 RC2")
+            .setTitle(isPlayEdition() ? "AtelierBridge Play · 1.0" : "AtelierBridge · 1.0 RC2")
             .setMessage("Lanceur indépendant, sans affiliation avec l’équipe ArtCraft. "
                 + "Les modules téléchargés appartiennent à leurs auteurs respectifs. "
                 + "Les documents restent sur l’appareil ou dans le dossier choisi. "
-                + "Les installations et vérifications de versions interrogent GitHub. "
+                + (isPlayEdition() ? "Les éditeurs sont intégrés et mis à jour avec l’application via Google Play. " : "Les installations et vérifications de versions interrogent GitHub. ")
                 + "Aucune télémétrie n’est intégrée au lanceur. "
                 + "Code, licences et politique de confidentialité : dépôt GitHub.")
             .setPositiveButton("Fermer", null)
             .setNeutralButton("GitHub", (dialog, which) ->
                 openExternal("https://github.com/jojo4626/atelierbridge"))
             .show();
+    }
+
+    private void showBundledNotices() {
+        try (InputStream in = getAssets().open("play/THIRD_PARTY_NOTICES.txt");
+             ByteArrayOutputStream text = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                if (text.size() + n > 300000) throw new IOException("Notices trop volumineuses");
+                text.write(buffer, 0, n);
+            }
+            ScrollView scroller = new ScrollView(this);
+            TextView notices = label(new String(text.toByteArray(), StandardCharsets.UTF_8), 12, WHITE, false);
+            notices.setPadding(dp(18), dp(12), dp(18), dp(12));
+            scroller.addView(notices);
+            new AlertDialog.Builder(this).setTitle("Licences et auteurs")
+                .setView(scroller).setPositiveButton("Fermer", null).show();
+        } catch (IOException error) {
+            new AlertDialog.Builder(this).setTitle("Licences et auteurs")
+                .setMessage("Notices indisponibles dans cette installation : " + error.getMessage())
+                .setPositiveButton("Fermer", null).show();
+        }
     }
 
     private GradientDrawable shape(int color, int radius, int border) {
@@ -226,7 +291,7 @@ public final class MainActivity extends Activity {
 
     private int installedCount() {
         int count = 0;
-        for (String[] app : APPS) if (installed(app[1])) count++;
+        for (String[] app : availableApps()) if (installed(app[1])) count++;
         return count;
     }
 
@@ -236,12 +301,12 @@ public final class MainActivity extends Activity {
         if (last != null && installed(last)) return last;
         if (installed("photocraft")) return "photocraft";
         if (installed("vectorcraft")) return "vectorcraft";
-        for (String[] app : APPS) if (installed(app[1])) return app[1];
+        for (String[] app : availableApps()) if (installed(app[1])) return app[1];
         return null;
     }
 
     private String displayName(String slug) {
-        for (String[] app : APPS) if (app[1].equals(slug)) return app[0];
+        for (String[] app : availableApps()) if (app[1].equals(slug)) return app[0];
         return slug;
     }
 
@@ -383,13 +448,13 @@ public final class MainActivity extends Activity {
 
         LinearLayout metrics = horizontal();
         addMetric(metrics, String.valueOf(installedCount()), "Installés");
-        addMetric(metrics, String.valueOf(APPS.length), "Ateliers");
+        addMetric(metrics, String.valueOf(availableApps().length), "Ateliers");
         addMetric(metrics, String.valueOf(RecentExports.list(this).size()), "Exports");
         main.addView(metrics, margins(26));
 
         main.addView(sectionHeader("Mes ateliers", "Prêts à créer, même hors connexion", () -> showSection(1)), margins(14));
         ArrayList<String[]> mine = new ArrayList<>();
-        for (String[] app : APPS) if (installed(app[1])) mine.add(app);
+        for (String[] app : availableApps()) if (installed(app[1])) mine.add(app);
         if (mine.isEmpty()) {
             LinearLayout empty = panel(SURFACE, 16, OUTLINE);
             empty.addView(label("Ton studio attend ses premiers outils", 16, WHITE, true), margins(6));
@@ -402,13 +467,14 @@ public final class MainActivity extends Activity {
 
         main.addView(sectionHeader("À découvrir", "Installe uniquement les outils dont tu as besoin", () -> showSection(1)), margins(14));
         ArrayList<String[]> suggestions = new ArrayList<>();
-        for (String[] app : APPS) if (!installed(app[1]) && suggestions.size() < 2) suggestions.add(app);
+        for (String[] app : availableApps()) if (!installed(app[1]) && suggestions.size() < 2) suggestions.add(app);
         if (!suggestions.isEmpty()) renderCards(main, suggestions, true);
         else main.addView(label("Tous les ateliers du catalogue sont installés.", 13, SOFT, false), margins(20));
 
         LinearLayout tip = panel(SURFACE, 16, OUTLINE);
         tip.addView(label("✦  Crée aussi hors connexion", 15, MINT, true), margins(6));
-        tip.addView(label("Les ateliers installés restent sur ton appareil. Internet est uniquement nécessaire pour leur téléchargement et leurs mises à jour.", 12, SOFT, false));
+        tip.addView(label(isPlayEdition() ? "PhotoCraft et VectorCraft sont intégrés et utilisables hors ligne. Leurs mises à jour sont livrées par Google Play." :
+            "Les ateliers installés restent sur ton appareil. Internet est uniquement nécessaire pour leur téléchargement et leurs mises à jour.", 12, SOFT, false));
         main.addView(tip);
     }
 
@@ -467,10 +533,13 @@ public final class MainActivity extends Activity {
         card.addView(label(app[2], 12, SOFT, false), margins(14));
         if (ready) {
             card.addView(action("Ouvrir l'atelier  →", true, () -> openApp(slug)), margins(8));
-            if (!compact) card.addView(action("Mettre à jour", false, () -> installSelected(new String[]{slug})));
+            if (!compact && !isPlayEdition()) card.addView(action("Mettre à jour", false, () -> installSelected(new String[]{slug})));
         } else {
-            card.addView(action("Installer  ↓", true, () -> installSelected(new String[]{slug})), margins(8));
-            if (!compact) card.addView(action("Importer un ZIP", false, () -> importZip(slug)));
+            if (isPlayEdition()) card.addView(label("Préparation locale en cours…", 12, SOFT, false), margins(8));
+            else {
+                card.addView(action("Installer  ↓", true, () -> installSelected(new String[]{slug})), margins(8));
+                if (!compact) card.addView(action("Importer un ZIP", false, () -> importZip(slug)));
+            }
         }
         return card;
     }
@@ -518,15 +587,16 @@ public final class MainActivity extends Activity {
             @Override public void afterTextChanged(Editable e) { }
         });
         populateCatalog(results);
-        main.addView(action("Installer plusieurs ateliers", false, this::chooseModules), margins(12));
-        main.addView(label("Les modules sont fournis par leurs auteurs. Certaines versions Web peuvent ne pas être disponibles ou fonctionner sur Android.", 12, SOFT, false));
+        if (!isPlayEdition()) main.addView(action("Installer plusieurs ateliers", false, this::chooseModules), margins(12));
+        main.addView(label(isPlayEdition() ? "PhotoCraft et VectorCraft sont inclus dans l'application, avec attribution aux auteurs." :
+            "Les modules sont fournis par leurs auteurs. Certaines versions Web peuvent ne pas être disponibles ou fonctionner sur Android.", 12, SOFT, false));
     }
 
     private void populateCatalog(LinearLayout container) {
         container.removeAllViews();
         ArrayList<String[]> matches = new ArrayList<>();
         String query = catalogQuery.trim().toLowerCase(java.util.Locale.ROOT);
-        for (String[] app : APPS) {
+        for (String[] app : availableApps()) {
             if (!catalogCategory.equals("Tous") && !category(app[1]).equals(catalogCategory)) continue;
             if (!query.isEmpty() && !(app[0] + " " + app[2] + " " + category(app[1]))
                 .toLowerCase(java.util.Locale.ROOT).contains(query)) continue;
@@ -585,13 +655,20 @@ public final class MainActivity extends Activity {
         main.addView(label("Réglages", 28, WHITE, true), margins(6));
         main.addView(label("Personnalise et entretient ton studio.", 13, SOFT, false), margins(20));
         main.addView(sectionHeader("Ateliers", "Installation et compatibilité", null), margins(12));
-        settingsRow("↻", "Rechercher les mises à jour", "Vérifier les versions de tes modules installés", () -> checkUpdates(true));
-        settingsRow("▦", "Installer plusieurs ateliers", "Télécharger plusieurs éditeurs en une fois", this::chooseModules);
+        if (!isPlayEdition()) {
+            settingsRow("↻", "Rechercher les mises à jour", "Vérifier les versions de tes modules installés", () -> checkUpdates(true));
+            settingsRow("▦", "Installer plusieurs ateliers", "Télécharger plusieurs éditeurs en une fois", this::chooseModules);
+        } else {
+            settingsRow("↻", "Mises à jour", "Ateliers intégrés : mises à jour via Google Play", this::showAbout);
+        }
         settingsRow("◇", "Tester ma tablette", "WebAssembly, WebGL2 et fonctions de fichier", this::runDiagnostics);
         main.addView(sectionHeader("À propos", "Informations et transparence", null), margins(12));
         settingsRow("ⓘ", "Confidentialité et licences", "Origine des modules et fonctionnement hors ligne", this::showAbout);
+        if (isPlayEdition()) settingsRow("ⓘ", "Licences des outils inclus", "Lire les auteurs et licences embarqués", this::showBundledNotices);
+        if (isPlayEdition()) settingsRow("↗", "Politique de confidentialité", "Lire la politique publique d'AtelierBridge Play", () ->
+            openExternal("https://github.com/jojo4626/atelierbridge/blob/main/PLAY_PRIVACY.md"));
         settingsRow("↗", "Code source sur GitHub", "Consulter le projet AtelierBridge", () -> openExternal("https://github.com/jojo4626/atelierbridge"));
-        TextView footer = label("AtelierBridge 1.0.0-rc.2  ·  Édition indépendante", 12, SOFT, false);
+        TextView footer = label(isPlayEdition() ? "AtelierBridge Play 1.0 · Édition indépendante" : "AtelierBridge 1.0.0-rc.2 · Édition indépendante", 12, SOFT, false);
         footer.setGravity(Gravity.CENTER);
         main.addView(footer, margins(8));
     }
@@ -667,9 +744,10 @@ public final class MainActivity extends Activity {
 
     
     private void checkUpdates(boolean manual) {
+        if (isPlayEdition()) return;
         if (!updateCheckActive.compareAndSet(false, true)) return;
         List<String> installedSlugs = new ArrayList<>();
-        for (String[] item : APPS) if (installed(item[1])) installedSlugs.add(item[1]);
+        for (String[] item : availableApps()) if (installed(item[1])) installedSlugs.add(item[1]);
         if (installedSlugs.isEmpty()) {
             updateCheckActive.set(false);
             if (manual) Toast.makeText(this, "Installe un atelier avant de chercher des mises à jour", Toast.LENGTH_LONG).show();
@@ -722,6 +800,12 @@ public final class MainActivity extends Activity {
     }
 
     private void chooseModules() {
+        if (isPlayEdition()) {
+            new AlertDialog.Builder(this).setTitle("Ateliers intégrés")
+                .setMessage("PhotoCraft et VectorCraft sont déjà inclus dans cette édition. Les mises à jour passent par Google Play.")
+                .setPositiveButton("OK", null).show();
+            return;
+        }
         String[] names = new String[APPS.length];
         boolean[] checked = new boolean[APPS.length];
         for (int i = 0; i < APPS.length; i++) names[i] = APPS[i][0] + (installed(APPS[i][1]) ? " (installé)" : "");
@@ -738,6 +822,10 @@ public final class MainActivity extends Activity {
     }
 
     private void installSelected(String[] slugs) {
+        if (isPlayEdition()) {
+            Toast.makeText(this, "Les mises à jour passent par Google Play", Toast.LENGTH_LONG).show();
+            return;
+        }
         
         AtomicBoolean cancelled = new AtomicBoolean(false);
         LinearLayout panel = vertical();
@@ -846,6 +934,7 @@ public final class MainActivity extends Activity {
     }
 
     private void importZip(String slug) {
+        if (isPlayEdition()) return;
         incomingSlug = slug;
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.setType("*/*");
